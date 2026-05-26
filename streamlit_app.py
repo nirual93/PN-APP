@@ -47,6 +47,22 @@ if 'probenehmer' not in st.session_state:
 if 'wetter_manuell' not in st.session_state:
     st.session_state.wetter_manuell = st.query_params.get('wetter_manuell', '')
 
+# Organoleptik (Crash-Schutz)
+if 'faerbung' not in st.session_state:
+    st.session_state.faerbung = st.query_params.get('faerbung', '')
+
+if 'truebung' not in st.session_state:
+    st.session_state.truebung = st.query_params.get('truebung', '')
+
+if 'geruch' not in st.session_state:
+    st.session_state.geruch = st.query_params.get('geruch', '')
+
+if 'bodensatz' not in st.session_state:
+    st.session_state.bodensatz = st.query_params.get('bodensatz', '')
+
+if 'bemerkungen' not in st.session_state:
+    st.session_state.bemerkungen = st.query_params.get('bemerkungen', '')
+
 if 'din_tiefe' not in st.session_state:
     val = st.query_params.get('din_tiefe', '22.5')
     st.session_state.din_tiefe = float(val) if val else 22.5
@@ -60,11 +76,11 @@ if 'din_rws' not in st.session_state:
 st.title("🛠️ Grundwasser Feld-Assistent")
 st.write("Wählen Sie das benötigte Werkzeug über die Reiter aus:")
 
-# --- KARTEIREITER (Optimiert für Smartphones: Nur noch 3 Reiter) ---
+# --- KARTEIREITER ---
 tab1, tab2, tab3 = st.tabs(["💧 DIN- & Kiesrechner", "⏱️ Förderstrom", "⏳ Protokoll & Timer"])
 
 # ==========================================
-# WERKZEUG 1: DIN-RECHNER & FILTERKIES (Zusammengefasst)
+# WERKZEUG 1: DIN-RECHNER & FILTERKIES
 # ==========================================
 with tab1:
     st.subheader("Rohrvolumen nach DIN 38402-13")
@@ -97,7 +113,6 @@ with tab1:
             col2.metric("1-fach Volumen", f"{standwasser_volumen:.1f} L")
             col3.metric("3-fach Abpumpen", f"{abpump_volumen:.1f} L")
 
-    # Filterkies-Rechner als einklappbarer Expander (platzsparend für Mobilgeräte)
     st.write("---")
     with st.expander("🪨 Alternativ: Filterkiesschüttung berechnen (Selten benötigt)"):
         st.write("Berechnung des Volumens der Filterkiesschüttung für Sonderfälle:")
@@ -165,7 +180,7 @@ with tab2:
 with tab3:
     st.subheader("⏳ Protokoll & Abpump-Überwachung")
     
-    # Stammdaten-Block (2 Spalten für eine kompakte Ansicht)
+    # Stammdaten-Block
     col_k1, col_k2 = st.columns(2)
     with col_k1:
         messstelle_input = st.text_input("Bezeichnung der Messstelle:", value=st.session_state.messstelle)
@@ -212,6 +227,44 @@ with tab3:
         st.rerun()
 
     st.write("---")
+    st.markdown("#### 👁️ Organoleptische Befundung")
+    
+    # NEU: 4 Felder für Färbung, Trübung, Geruch, Bodensatz oberhalb der Bemerkungen
+    col_o1, col_o2 = st.columns(2)
+    with col_o1:
+        faerbung_input = st.text_input("Färbung:", value=st.session_state.faerbung, placeholder="z. B. farblos, schwach gelblich")
+        if faerbung_input != st.session_state.faerbung:
+            st.session_state.faerbung = faerbung_input
+            st.query_params['faerbung'] = faerbung_input
+            st.rerun()
+            
+        truebung_input = st.text_input("Trübung:", value=st.session_state.truebung, placeholder="z. B. keine, schwach trüb, stark trüb")
+        if truebung_input != st.session_state.truebung:
+            st.session_state.truebung = truebung_input
+            st.query_params['truebung'] = truebung_input
+            st.rerun()
+            
+    with col_o2:
+        geruch_input = st.text_input("Geruch:", value=st.session_state.geruch, placeholder="z. B. geruchlos, nach H2S, moorig")
+        if geruch_input != st.session_state.geruch:
+            st.session_state.geruch = geruch_input
+            st.query_params['geruch'] = geruch_input
+            st.rerun()
+            
+        bodensatz_input = st.text_input("Bodensatz:", value=st.session_state.bodensatz, placeholder="z. B. kein, sandig, flockig, braun")
+        if bodensatz_input != st.session_state.bodensatz:
+            st.session_state.bodensatz = bodensatz_input
+            st.query_params['bodensatz'] = bodensatz_input
+            st.rerun()
+
+    # Mehrzeiliges Textfeld für Bemerkungen des Probenehmers
+    bemerkungen_input = st.text_area("Bemerkungen des Probenehmers:", value=st.session_state.bemerkungen, placeholder="z. B. Starke Initialtrübung, technische Auffälligkeiten o.ä.")
+    if bemerkungen_input != st.session_state.bemerkungen:
+        st.session_state.bemerkungen = bemerkungen_input
+        st.query_params['bemerkungen'] = bemerkungen_input
+        st.rerun()
+
+    st.write("---")
 
     vol = st.session_state.ziel_volumen
     flow = st.session_state.pumpen_leistung
@@ -222,7 +275,6 @@ with tab3:
         
         st.info(f"**Ziel-Volumen:** {vol:.1f} L | **Förderstrom:** {flow:.2f} l/min | **Dauer:** {total_minutes:.1f} Min.")
         
-        # STATUS: PUMPE NOCH NICHT GESTARTET
         if st.session_state.pumpen_start is None:
             if st.button("▶️ Pumpe starten & Protokoll beginnen", type="primary"):
                 jetzt = time.time()
@@ -231,8 +283,6 @@ with tab3:
                 st.query_params['pumpen_start'] = str(jetzt)
                 st.query_params['messungen'] = "[]"
                 st.rerun() 
-        
-        # STATUS: PUMPE LÄUFT
         else:
             elapsed_seconds = int(time.time() - st.session_state.pumpen_start)
             remaining_total = max(0, total_seconds - elapsed_seconds)
@@ -240,7 +290,6 @@ with tab3:
             elapsed_in_cycle = elapsed_seconds % 300
             remaining_in_cycle = 300 - elapsed_in_cycle
             
-            # --- DOPPEL-TIMER ANZEIGE ---
             col_t1, col_t2 = st.columns(2)
             with col_t1:
                 st.metric("Verbleibende Gesamtdauer", f"{remaining_total // 60:02d}:{remaining_total % 60:02d} Min")
@@ -258,7 +307,6 @@ with tab3:
             
             st.write("---")
             
-            # --- EINGABEMASKE FÜR VOR-ORT-PARAMETER ---
             st.markdown("### 📝 Parameter erfassen")
             
             col_p1, col_p2, col_p3 = st.columns(3)
@@ -340,6 +388,13 @@ with tab3:
                 wetter_wert = st.session_state.wetter_manuell if st.session_state.wetter_manuell else "Keine Angabe"
                 probenehmer_wert = st.session_state.probenehmer if st.session_state.probenehmer else "Nicht angegeben"
                 
+                faerbung_wert = st.session_state.faerbung if st.session_state.faerbung else "Keine Angabe"
+                truebung_wert = st.session_state.truebung if st.session_state.truebung else "Keine Angabe"
+                geruch_wert = st.session_state.geruch if st.session_state.geruch else "Keine Angabe"
+                bodensatz_wert = st.session_state.bodensatz if st.session_state.bodensatz else "Keine Angabe"
+                bemerkungen_wert = st.session_state.bemerkungen if st.session_state.bemerkungen else "Keine"
+                
+                # Formatierung Text-Protokoll (Inklusive Organoleptik)
                 protokoll_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
                 protokoll_text += "="*102 + "\n"
                 protokoll_text += f"Auftragsnummer:        {auftrag}\n"
@@ -352,6 +407,11 @@ with tab3:
                 protokoll_text += f"Förderstrom:           {flow:.2f} l/min\n"
                 protokoll_text += f"Berechnete Förderzeit: {total_minutes:.1f} Min.\n"
                 protokoll_text += f"Witterung/Lufttemp.:   {wetter_wert}\n"
+                protokoll_text += f"Färbung:               {faerbung_wert}\n"
+                protokoll_text += f"Trübung:               {truebung_wert}\n"
+                protokoll_text += f"Geruch:                {geruch_wert}\n"
+                protokoll_text += f"Bodensatz:             {bodensatz_wert}\n"
+                protokoll_text += f"Bemerkungen:           {bemerkungen_wert}\n"
                 protokoll_text += "-"*102 + "\n\n"
                 
                 spalten_layout = "{:<12} {:<10} {:<12} {:<14} {:<12} {:<8} {:<13} {:<12} {:<10} {:<15}\n"
@@ -377,9 +437,8 @@ with tab3:
                 st.write("---")
                 st.code(protokoll_text, language="markdown")
                 
-                # --- CSV-DOWNLOAD ---
-                st.write("---")
-                st.markdown("### 📥 Daten exportieren")
+                # Formatierung CSV-Text (Inklusive Organoleptik)
+                csv_safe_bemerkungen = bemerkungen_wert.replace("\n", " // ")
                 
                 csv_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
                 csv_text += f"Auftragsnummer;{auftrag};-\n"
@@ -392,6 +451,11 @@ with tab3:
                 csv_text += f"Förderstrom;{flow:.2f};l/min\n"
                 csv_text += f"Berechnete Förderzeit;{total_minutes:.1f};Min.\n"
                 csv_text += f"Witterung/Lufttemp.;{wetter_wert};-\n"
+                csv_text += f"Färbung;{faerbung_wert};-\n"
+                csv_text += f"Trübung;{truebung_wert};-\n"
+                csv_text += f"Geruch;{geruch_wert};-\n"
+                csv_text += f"Bodensatz;{bodensatz_wert};-\n"
+                csv_text += f"Bemerkungen;{csv_safe_bemerkungen};-\n"
                 csv_text += "\n"
                 
                 csv_text += "Datum;Uhrzeit;Zeit (Min);Wasserstand (m);Temp (°C);pH;LF (µS/cm);Redox (mV);O2 (mg/l);Status\n"
@@ -404,6 +468,8 @@ with tab3:
                 
                 dateiname = f"Protokoll_{bezeichnung.replace(' ', '_')}.csv" if bezeichnung != "Nicht angegeben" else "Protokoll_Grundwasser.csv"
                 
+                st.write("---")
+                st.markdown("### 📥 Daten exportieren")
                 st.download_button(
                     label="📄 Tabelle als vollständige CSV-Datei herunterladen",
                     data=csv_text,
@@ -425,6 +491,11 @@ with tab3:
                 st.session_state.pumpe_typ = "MP1 mit Schlauch"
                 st.session_state.probenehmer = ""
                 st.session_state.wetter_manuell = ""
+                st.session_state.faerbung = ""
+                st.session_state.truebung = ""
+                st.session_state.geruch = ""
+                st.session_state.bodensatz = ""
+                st.session_state.bemerkungen = ""
                 st.session_state.din_tiefe = 22.5
                 st.session_state.din_rws = 14.2
                 st.query_params.clear()
@@ -436,4 +507,3 @@ with tab3:
                 
     else:
         st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen (Reiter 1: DIN oder Filterkies) und übernehmen Sie den Förderstrom (Reiter 2).")
-                                         
