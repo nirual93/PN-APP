@@ -31,6 +31,14 @@ if 'messungen' not in st.session_state:
 if 'messstelle' not in st.session_state:
     st.session_state.messstelle = st.query_params.get('messstelle', '')
 
+# ERWEITERUNG: Neue Felder im Crash-Schutz registrieren
+if 'auftragsnummer' not in st.session_state:
+    st.session_state.auftragsnummer = st.query_params.get('auftragsnummer', '')
+
+if 'pumpe_tiefe' not in st.session_state:
+    val = st.query_params.get('pumpe_tiefe', '20.0')
+    st.session_state.pumpe_tiefe = float(val) if val else 20.0
+
 if 'din_tiefe' not in st.session_state:
     val = st.query_params.get('din_tiefe', '22.5')
     st.session_state.din_tiefe = float(val) if val else 22.5
@@ -154,11 +162,26 @@ with tab3:
 with tab4:
     st.subheader("⏳ Protokoll & Abpump-Überwachung")
     
-    messstelle_input = st.text_input("Bezeichnung der Messstelle:", value=st.session_state.messstelle)
-    if messstelle_input != st.session_state.messstelle:
-        st.session_state.messstelle = messstelle_input
-        st.query_params['messstelle'] = messstelle_input
-        st.rerun()
+    # ERWEITERUNG: Eingabefelder für Messstelle, Auftragsnummer und Einbautiefe
+    col_k1, col_k2, col_k3 = st.columns(3)
+    with col_k1:
+        messstelle_input = st.text_input("Bezeichnung der Messstelle:", value=st.session_state.messstelle)
+        if messstelle_input != st.session_state.messstelle:
+            st.session_state.messstelle = messstelle_input
+            st.query_params['messstelle'] = messstelle_input
+            st.rerun()
+    with col_k2:
+        auftragsnummer_input = st.text_input("Auftragsnummer:", value=st.session_state.auftragsnummer)
+        if auftragsnummer_input != st.session_state.auftragsnummer:
+            st.session_state.auftragsnummer = auftragsnummer_input
+            st.query_params['auftragsnummer'] = auftragsnummer_input
+            st.rerun()
+    with col_k3:
+        pumpe_tiefe_input = st.number_input("Einbautiefe Pumpe (m unter ROK):", value=st.session_state.pumpe_tiefe, step=0.1)
+        if pumpe_tiefe_input != st.session_state.pumpe_tiefe:
+            st.session_state.pumpe_tiefe = pumpe_tiefe_input
+            st.query_params['pumpe_tiefe'] = str(pumpe_tiefe_input)
+            st.rerun()
 
     vol = st.session_state.ziel_volumen
     flow = st.session_state.pumpen_leistung
@@ -213,6 +236,14 @@ with tab4:
             with col_p1:
                 water_level = st.number_input("Wasserstand (m)", value=14.50, step=0.01)
                 temp = st.number_input("Temp. (°C)", value=11.0, step=0.1)
+                
+                # ERWEITERUNG: Live-Trockenlauf-Warnung bei der Eingabe
+                wasser_ueber_pumpe = st.session_state.pumpe_tiefe - water_level
+                if wasser_ueber_pumpe < 1.0:
+                    st.error(f"🚨 TROCKENLAUFSCHUTZ:\nWasserstand zu niedrig! Pumpe hängt nur noch {wasser_ueber_pumpe:.2f} m im Wasser (Minimum: 1.00 m)!")
+                elif wasser_ueber_pumpe < 0:
+                    st.error("🚨 CRITICAL: Die Pumpe hängt bereits im Trockenen!")
+                    
             with col_p2:
                 ph = st.number_input("pH-Wert", value=7.00, step=0.01)
                 lf = st.number_input("LF (µS/cm)", value=500.0, step=1.0)
@@ -223,9 +254,16 @@ with tab4:
             # Speichern-Button
             if st.button("💾 Werte zum Protokoll hinzufügen", type="primary"):
                 uhrzeit_jetzt = time.strftime("%H:%M:%S")
+                datum_jetzt = time.strftime("%d.%m.%Y")  # ERWEITERUNG: Aktuelles Datum erfassen
                 zeitstempel = f"{elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
                 
+                # Prüfen, ob für diesen Eintrag eine Warnung vermerkt werden muss
+                warnung_text = ""
+                if (st.session_state.pumpe_tiefe - water_level) < 1.0:
+                    warnung_text = "⚠️ < 1m Wasser!"
+                
                 neue_messung = {
+                    "Datum": datum_jetzt,        # ERWEITERUNG: Datum hinzugefügt
                     "Uhrzeit": uhrzeit_jetzt,
                     "Zeit (Min)": zeitstempel,
                     "Wasserstand (m)": water_level,
@@ -233,12 +271,13 @@ with tab4:
                     "pH": ph,
                     "LF (µS/cm)": lf,
                     "Redox (mV)": redox,
-                    "O2 (mg/l)": o2
+                    "O2 (mg/l)": o2,
+                    "Status": warnung_text       # Optionaler Warnmarker im Datensatz
                 }
                 st.session_state.messungen.append(neue_messung)
                 st.query_params['messungen'] = json.dumps(st.session_state.messungen)
                 
-                st.success(f"Messung um {uhrzeit_jetzt} (Minute {zeitstempel}) erfolgreich gespeichert!")
+                st.success(f"Messung um {uhrzeit_jetzt} erfolgreich gespeichert!")
                 st.rerun()
                 
             # --- PROTOKOLL & EXPORT ---
@@ -257,6 +296,7 @@ with tab4:
                         return ((neu - alt) / alt) * 100
                     
                     abweichung_zeile = {
+                        "Datum": "-",
                         "Uhrzeit": "Δ Vorwert",
                         "Zeit (Min)": "-",
                         "Wasserstand (m)": f"{prozent_diff(m_letzte['Wasserstand (m)'], m_vorletzte['Wasserstand (m)']):+.1f}%",
@@ -264,7 +304,8 @@ with tab4:
                         "pH": f"{prozent_diff(m_letzte['pH'], m_vorletzte['pH']):+.1f}%",
                         "LF (µS/cm)": f"{prozent_diff(m_letzte['LF (µS/cm)'], m_vorletzte['LF (µS/cm)']):+.1f}%",
                         "Redox (mV)": f"{prozent_diff(m_letzte['Redox (mV)'], m_vorletzte['Redox (mV)']):+.1f}%",
-                        "O2 (mg/l)": f"{prozent_diff(m_letzte['O2 (mg/l)'], m_vorletzte['O2 (mg/l)']):+.1f}%"
+                        "O2 (mg/l)": f"{prozent_diff(m_letzte['O2 (mg/l)'], m_vorletzte['O2 (mg/l)']):+.1f}%",
+                        "Status": ""
                     }
                     tabellen_daten = tabellen_daten + [abweichung_zeile]
                 
@@ -272,34 +313,38 @@ with tab4:
                 
                 # --- STRUKTURIERTER TEXT-EXPORT (FIXED WIDTH) ---
                 bezeichnung = st.session_state.messstelle if st.session_state.messstelle else "Nicht angegeben"
+                auftrag = st.session_state.auftragsnummer if st.session_state.auftragsnummer else "Nicht angegeben"
                 
                 protokoll_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
-                protokoll_text += "="*88 + "\n"
+                protokoll_text += "="*102 + "\n"
+                protokoll_text += f"Auftragsnummer:        {auftrag}\n"
+                protokoll_text += f"Einbautiefe Pumpe:     {st.session_state.pumpe_tiefe:.2f} m\n"
                 protokoll_text += f"Ruhewasserstand:       {st.session_state.din_rws:.2f} m\n"
                 protokoll_text += f"Gesamttiefe:           {st.session_state.din_tiefe:.2f} m\n"
                 protokoll_text += f"Zu pumpendes Volumen:  {vol:.1f} L\n"
                 protokoll_text += f"Förderstrom:           {flow:.2f} l/min\n"
                 protokoll_text += f"Berechnete Förderzeit: {total_minutes:.1f} Min.\n"
-                protokoll_text += "-"*88 + "\n\n"
+                protokoll_text += "-"*102 + "\n\n"
                 
-                spalten_layout = "{:<12} {:<12} {:<14} {:<12} {:<8} {:<13} {:<12} {:<10}\n"
-                protokoll_text += spalten_layout.format("Uhrzeit", "Zeit (Min)", "W-Stand (m)", "Temp (°C)", "pH", "LF (µS/cm)", "Redox (mV)", "O2 (mg/l)")
-                protokoll_text += "-"*88 + "\n"
+                # Layout-Formatierung angepasst für das zusätzliche Datum- und Statusfeld
+                spalten_layout = "{:<12} {:<10} {:<12} {:<14} {:<12} {:<8} {:<13} {:<12} {:<10} {:<15}\n"
+                protokoll_text += spalten_layout.format("Datum", "Uhrzeit", "Zeit (Min)", "W-Stand (m)", "Temp (°C)", "pH", "LF (µS/cm)", "Redox (mV)", "O2 (mg/l)", "Status/Warnung")
+                protokoll_text += "-"*102 + "\n"
                 
                 for m in st.session_state.messungen:
                     protokoll_text += spalten_layout.format(
-                        m['Uhrzeit'], m['Zeit (Min)'], f"{m['Wasserstand (m)']:.2f}",
+                        m['Datum'], m['Uhrzeit'], m['Zeit (Min)'], f"{m['Wasserstand (m)']:.2f}",
                         f"{m['Temp (°C)']:.1f}", f"{m['pH']:.2f}", f"{m['LF (µS/cm)']:.0f}",
-                        f"{m['Redox (mV)']:.0f}", f"{m['O2 (mg/l)']:.1f}"
+                        f"{m['Redox (mV)']:.0f}", f"{m['O2 (mg/l)']:.1f}", m['Status']
                     )
                 
                 if len(st.session_state.messungen) >= 2:
-                    protokoll_text += "-"*88 + "\n"
+                    protokoll_text += "-"*102 + "\n"
                     protokoll_text += spalten_layout.format(
-                        "Δ Vorwert", "-", abweichung_zeile['Wasserstand (m)'],
+                        "-", "Δ Vorwert", "-", abweichung_zeile['Wasserstand (m)'],
                         abweichung_zeile['Temp (°C)'], abweichung_zeile['pH'],
                         abweichung_zeile['LF (µS/cm)'], abweichung_zeile['Redox (mV)'],
-                        abweichung_zeile['O2 (mg/l)']
+                        abweichung_zeile['O2 (mg/l)'], ""
                     )
                 
                 st.write("---")
@@ -307,32 +352,29 @@ with tab4:
                 st.code(protokoll_text, language="markdown")
                 
                 # =========================================================================
-                # NEU: OPTIMIERTER CSV-DOWNLOAD INKLUSIVE ALLER METADATEN (KOPFZEILEN)
+                # CSV-DOWNLOAD INKLUSIVE NEUER METADATEN UND DATUM
                 # =========================================================================
                 st.write("---")
                 st.markdown("### 📥 Daten exportieren")
                 
-                # 1. Kopfdaten zeilenweise hinzufügen
                 csv_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
+                csv_text += f"Auftragsnummer;{auftrag};-\n"
+                csv_text += f"Einbautiefe Pumpe;{st.session_state.pumpe_tiefe:.2f};m\n"
                 csv_text += f"Ruhewasserstand;{st.session_state.din_rws:.2f};m\n"
                 csv_text += f"Gesamttiefe;{st.session_state.din_tiefe:.2f};m\n"
                 csv_text += f"Zu pumpendes Volumen;{vol:.1f};L\n"
                 csv_text += f"Förderstrom;{flow:.2f};l/min\n"
                 csv_text += f"Berechnete Förderzeit;{total_minutes:.1f};Min.\n"
-                csv_text += "\n"  # Eine Leerzeile trennt die Metadaten von den Tabellendaten
+                csv_text += "\n"
                 
-                # 2. Spaltenüberschriften der Tabelle
-                csv_text += "Uhrzeit;Zeit (Min);Wasserstand (m);Temp (°C);pH;LF (µS/cm);Redox (mV);O2 (mg/l)\n"
+                csv_text += "Datum;Uhrzeit;Zeit (Min);Wasserstand (m);Temp (°C);pH;LF (µS/cm);Redox (mV);O2 (mg/l);Status\n"
                 
-                # 3. Messwert-Zeilen
                 for m in st.session_state.messungen:
-                    csv_text += f"{m['Uhrzeit']};{m['Zeit (Min)']};{m['Wasserstand (m)']:.2f};{m['Temp (°C)']:.1f};{m['pH']:.2f};{m['LF (µS/cm)']:.0f};{m['Redox (mV)']:.0f};{m['O2 (mg/l)']:.1f}\n"
+                    csv_text += f"{m['Datum']};{m['Uhrzeit']};{m['Zeit (Min)']};{m['Wasserstand (m)']:.2f};{m['Temp (°C)']:.1f};{m['pH']:.2f};{m['LF (µS/cm)']:.0f};{m['Redox (mV)']:.0f};{m['O2 (mg/l)']:.1f};{m['Status']}\n"
                 
-                # 4. Abweichungszeile (falls vorhanden) am Ende anhängen
                 if len(st.session_state.messungen) >= 2:
-                    csv_text += f"{abweichung_zeile['Uhrzeit']};{abweichung_zeile['Zeit (Min)']};{abweichung_zeile['Wasserstand (m)']};{abweichung_zeile['Temp (°C)']};{abweichung_zeile['pH']};{abweichung_zeile['LF (µS/cm)']};{abweichung_zeile['Redox (mV)']};{abweichung_zeile['O2 (mg/l)']}\n"
+                    csv_text += f"-;{abweichung_zeile['Uhrzeit']};-;{abweichung_zeile['Wasserstand (m)']};{abweichung_zeile['Temp (°C)']};{abweichung_zeile['pH']};{abweichung_zeile['LF (µS/cm)']};{abweichung_zeile['Redox (mV)']};{abweichung_zeile['O2 (mg/l)']};-\n"
                 
-                # Dateinamen generieren
                 dateiname = f"Protokoll_{bezeichnung.replace(' ', '_')}.csv" if bezeichnung != "Nicht angegeben" else "Protokoll_Grundwasser.csv"
                 
                 st.download_button(
@@ -351,6 +393,8 @@ with tab4:
                 st.session_state.pumpen_start = None
                 st.session_state.messungen = []
                 st.session_state.messstelle = ""
+                st.session_state.auftragsnummer = ""
+                st.session_state.pumpe_tiefe = 20.0
                 st.session_state.din_tiefe = 22.5
                 st.session_state.din_rws = 14.2
                 st.query_params.clear()
