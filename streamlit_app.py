@@ -1,63 +1,10 @@
-import streamlit as st
+ import streamlit as st
 import math
 import time
 import json
-import requests  # ERWEITERUNG: Für den Internet-Abruf der Wetterdaten
 
 # --- SEITEN-SETUP ---
 st.set_page_config(page_title="Feld-Assistent GW", page_icon="🛠️", layout="centered")
-
-# =========================================================================
-# HILFSFUNKTION: LIVE-WETTER ABZIEHEN (OPEN-METEO & NOMINATIM)
-# =========================================================================
-def get_weather(city_name):
-    try:
-        # 1. Geokodierung via Nominatim (OpenStreetMap)
-        headers = {'User-Agent': 'Grundwasser-Feld-Assistent/1.0'}
-        geo_url = "https://nominatim.openstreetmap.org/search"
-        geo_params = {'q': city_name, 'format': 'json', 'limit': 1}
-        geo_res = requests.get(geo_url, params=geo_params, headers=headers).json()
-        
-        if not geo_res:
-            return None, "Ort nicht gefunden", None
-            
-        lat = geo_res[0]['lat']
-        lon = geo_res[0]['lon']
-        display_name = geo_res[0]['display_name'].split(',')[0]
-        
-        # 2. Wetter abrufen via Open-Meteo (Kostenfrei, ohne API-Key)
-        weather_url = "https://api.open-meteo.com/v1/forecast"
-        weather_params = {
-            'latitude': lat,
-            'longitude': lon,
-            'current': 'temperature_2m,weather_code',
-            'timezone': 'auto'
-        }
-        w_res = requests.get(weather_url, params=weather_params).json()
-        
-        current = w_res['current']
-        temp = current['temperature_2m']
-        code = current['weather_code']
-        
-        # WMO Code-Übersetzung ins Deutsche
-        wmo_codes = {
-            0: "Klarer Himmel",
-            1: "Hauptsächlich klar", 2: "Teils bewölkt", 3: "Bedeckt",
-            45: "Nebel", 48: "Aufsitzender Reifnebel",
-            51: "Leichter Nieselregen", 53: "Mäßiger Nieselregen", 55: "Dichter Nieselregen",
-            61: "Leichter Regen", 63: "Mäßiger Regen", 65: "Starker Regen",
-            71: "Leichter Schneefall", 73: "Mäßiger Schneefall", 75: "Starker Schneefall",
-            77: "Schneegriesel",
-            80: "Leichte Regenschauer", 81: "Mäßige Regenschauer", 82: "Starke Regenschauer",
-            85: "Leichte Schneeschauer", 86: "Starke Schneeschauer",
-            95: "Gewitter", 96: "Gewitter + leichter Hagel", 99: "Gewitter + starker Hagel"
-        }
-        
-        wetter_text = wmo_codes.get(code, f"Code {code}")
-        return f"{temp:.1f} °C", wetter_text, display_name
-    except:
-        return None, "Fehler beim Abruf", None
-
 
 # =========================================================================
 # CRASH-SCHUTZ: DATEN AUTOMATISCH AUS DER URL WIEDERHERSTELLEN
@@ -91,15 +38,14 @@ if 'pumpe_tiefe' not in st.session_state:
     val = st.query_params.get('pumpe_tiefe', '20.0')
     st.session_state.pumpe_tiefe = float(val) if val else 20.0
 
-# ERWEITERUNG: Wetter-Variablen im Crash-Schutz registrieren
-if 'wetter_ort' not in st.session_state:
-    st.session_state.wetter_ort = st.query_params.get('wetter_ort', '')
+if 'pumpe_typ' not in st.session_state:
+    st.session_state.pumpe_typ = st.query_params.get('pumpe_typ', 'MP1 mit Schlauch')
 
-if 'wetter_temp' not in st.session_state:
-    st.session_state.wetter_temp = st.query_params.get('wetter_temp', '-')
+if 'probenehmer' not in st.session_state:
+    st.session_state.probenehmer = st.query_params.get('probenehmer', '')
 
-if 'wetter_text' not in st.session_state:
-    st.session_state.wetter_text = st.query_params.get('wetter_text', '-')
+if 'wetter_manuell' not in st.session_state:
+    st.session_state.wetter_manuell = st.query_params.get('wetter_manuell', '')
 
 if 'din_tiefe' not in st.session_state:
     val = st.query_params.get('din_tiefe', '22.5')
@@ -114,11 +60,11 @@ if 'din_rws' not in st.session_state:
 st.title("🛠️ Grundwasser Feld-Assistent")
 st.write("Wählen Sie das benötigte Werkzeug über die Reiter aus:")
 
-# --- KARTEIREITER ---
-tab1, tab2, tab3, tab4 = st.tabs(["💧 DIN-Rechner", "🪨 Filterkies", "⏱️ Förderstrom", "⏳ Protokoll & Timer"])
+# --- KARTEIREITER (Optimiert für Smartphones: Nur noch 3 Reiter) ---
+tab1, tab2, tab3 = st.tabs(["💧 DIN- & Kiesrechner", "⏱️ Förderstrom", "⏳ Protokoll & Timer"])
 
 # ==========================================
-# WERKZEUG 1: DIN-RECHNER
+# WERKZEUG 1: DIN-RECHNER & FILTERKIES (Zusammengefasst)
 # ==========================================
 with tab1:
     st.subheader("Rohrvolumen nach DIN 38402-13")
@@ -151,37 +97,34 @@ with tab1:
             col2.metric("1-fach Volumen", f"{standwasser_volumen:.1f} L")
             col3.metric("3-fach Abpumpen", f"{abpump_volumen:.1f} L")
 
+    # Filterkies-Rechner als einklappbarer Expander (platzsparend für Mobilgeräte)
+    st.write("---")
+    with st.expander("🪨 Alternativ: Filterkiesschüttung berechnen (Selten benötigt)"):
+        st.write("Berechnung des Volumens der Filterkiesschüttung für Sonderfälle:")
+        durchmesser_m = st.number_input("Bohrlochdurchmesser in Metern", min_value=0.0, value=0.15, step=0.01, key="kies_dn")
+        maechtigkeit_m = st.number_input("Mächtigkeit der Schüttung in Metern", min_value=0.0, value=5.0, step=0.1, key="kies_h")
+        
+        if st.button("Kies-Volumen berechnen", type="primary", key="btn_kies"):
+            if durchmesser_m <= 0 or maechtigkeit_m <= 0:
+                st.error("❌ Fehler: Bitte Werte größer als 0 eingeben.")
+            else:
+                radius_m = durchmesser_m / 2
+                zylinder_volumen_m3 = math.pi * (radius_m ** 2) * maechtigkeit_m
+                ziel_volumen_l = (zylinder_volumen_m3 * 1.5) * 1000
+                
+                st.session_state.ziel_volumen = ziel_volumen_l
+                st.query_params['ziel_volumen'] = str(ziel_volumen_l)
+                
+                st.success("✅ Berechnung erfolgreich! Wert wurde für den Timer gespeichert.")
+                col1, col2 = st.columns(2)
+                col1.metric("1-fach Volumen (m³)", f"{zylinder_volumen_m3:.3f} m³")
+                col2.metric("1,5-fach Abpumpen (L)", f"{ziel_volumen_l:.1f} L")
+
 
 # ==========================================
-# WERKZEUG 2: FILTERKIES-RECHNER
+# WERKZEUG 2: FÖRDERSTROM-UMRECHNER
 # ==========================================
 with tab2:
-    st.subheader("Volumen der Filterkiesschüttung")
-    
-    durchmesser_m = st.number_input("Bohrlochdurchmesser in Metern", min_value=0.0, value=0.15, step=0.01, key="kies_dn")
-    maechtigkeit_m = st.number_input("Mächtigkeit der Schüttung in Metern", min_value=0.0, value=5.0, step=0.1, key="kies_h")
-    
-    if st.button("Kies-Volumen berechnen", type="primary", key="btn_kies"):
-        if durchmesser_m <= 0 or maechtigkeit_m <= 0:
-            st.error("❌ Fehler: Bitte Werte größer als 0 eingeben.")
-        else:
-            radius_m = durchmesser_m / 2
-            zylinder_volumen_m3 = math.pi * (radius_m ** 2) * maechtigkeit_m
-            ziel_volumen_l = (zylinder_volumen_m3 * 1.5) * 1000
-            
-            st.session_state.ziel_volumen = ziel_volumen_l
-            st.query_params['ziel_volumen'] = str(ziel_volumen_l)
-            
-            st.success("✅ Berechnung erfolgreich! Wert wurde für den Timer gespeichert.")
-            col1, col2 = st.columns(2)
-            col1.metric("1-fach Volumen (m³)", f"{zylinder_volumen_m3:.3f} m³")
-            col2.metric("1,5-fach Abpumpen (L)", f"{ziel_volumen_l:.1f} L")
-
-
-# ==========================================
-# WERKZEUG 3: FÖRDERSTROM-UMRECHNER
-# ==========================================
-with tab3:
     st.subheader("Umrechnung von Pumpenleistung & Messzeit")
     
     auswahl = st.radio("Gemessener Wert:", ["Liter pro Minute (l/min)", "Liter pro Stunde (l/h)", "Zeit für 1 Liter (s/l)"], key="strom_radio")
@@ -217,63 +160,56 @@ with tab3:
 
 
 # ==========================================
-# WERKZEUG 4: LIVE-TIMER & PROTOKOLL
+# WERKZEUG 3: LIVE-TIMER & PROTOKOLL
 # ==========================================
-with tab4:
+with tab3:
     st.subheader("⏳ Protokoll & Abpump-Überwachung")
     
-    # 1. Zeile Stammdaten
-    col_k1, col_k2, col_k3 = st.columns(3)
+    # Stammdaten-Block (2 Spalten für eine kompakte Ansicht)
+    col_k1, col_k2 = st.columns(2)
     with col_k1:
         messstelle_input = st.text_input("Bezeichnung der Messstelle:", value=st.session_state.messstelle)
         if messstelle_input != st.session_state.messstelle:
             st.session_state.messstelle = messstelle_input
             st.query_params['messstelle'] = messstelle_input
             st.rerun()
-    with col_k2:
+            
         auftragsnummer_input = st.text_input("Auftragsnummer:", value=st.session_state.auftragsnummer)
         if auftragsnummer_input != st.session_state.auftragsnummer:
             st.session_state.auftragsnummer = auftragsnummer_input
             st.query_params['auftragsnummer'] = auftragsnummer_input
             st.rerun()
-    with col_k3:
+            
+    with col_k2:
         pumpe_tiefe_input = st.number_input("Einbautiefe Pumpe (m unter ROK):", value=st.session_state.pumpe_tiefe, step=0.1)
         if pumpe_tiefe_input != st.session_state.pumpe_tiefe:
             st.session_state.pumpe_tiefe = pumpe_tiefe_input
             st.query_params['pumpe_tiefe'] = str(pumpe_tiefe_input)
             st.rerun()
 
-    # ERWEITERUNG: 2. Zeile Stammdaten (Wetter-Sektion)
-    st.markdown("##### 🌤️ Live-Wetterbericht über das Internet beziehen")
-    col_w1, col_w2, col_w3 = st.columns([2, 1, 2])
-    with col_w1:
-        wetter_ort_input = st.text_input("Wetter-Standort (Stadt oder PLZ):", value=st.session_state.wetter_ort, placeholder="z. B. Marburg")
-        if wetter_ort_input != st.session_state.wetter_ort:
-            st.session_state.wetter_ort = wetter_ort_input
-            st.query_params['wetter_ort'] = wetter_ort_input
+        pumpen_optionen = ["MP1 mit Schlauch", "MP1 mit Steigrohren", "Comet Pumpe mit Schlauch"]
+        try:
+            default_index = pumpen_optionen.index(st.session_state.pumpe_typ)
+        except ValueError:
+            default_index = 0
+            
+        pumpe_typ_input = st.selectbox("Verwendete Pumpe:", options=pumpen_optionen, index=default_index)
+        if pumpe_typ_input != st.session_state.pumpe_typ:
+            st.session_state.pumpe_typ = pumpe_typ_input
+            st.query_params['pumpe_typ'] = pumpe_typ_input
             st.rerun()
-    with col_w2:
-        st.write(" ") # Optischer Abstandshalter
-        st.write(" ")
-        if st.button("🌍 Wetter laden", type="secondary"):
-            if st.session_state.wetter_ort:
-                with st.spinner("Wetterdaten werden abgefragt..."):
-                    luft_t, witt, disp_name = get_weather(st.session_state.wetter_ort)
-                    if luft_t:
-                        st.session_state.wetter_temp = luft_t
-                        st.session_state.wetter_text = witt
-                        st.query_params['wetter_temp'] = luft_t
-                        st.query_params['wetter_text'] = witt
-                        st.toast(f"Wetter für {disp_name} erfolgreich geladen!")
-                        st.rerun()
-                    else:
-                        st.error("Ort im System nicht gefunden.")
-            else:
-                st.warning("Bitte zuerst einen Ort eintragen.")
-    with col_w3:
-        st.write(" ")
-        st.write(" ")
-        st.markdown(f"**Lufttemp.:** `{st.session_state.wetter_temp}` | **Witterung:** `{st.session_state.wetter_text}`")
+
+        probenehmer_input = st.text_input("Probenehmer (Name / Kürzel):", value=st.session_state.probenehmer, placeholder="z. B. J. Müller")
+        if probenehmer_input != st.session_state.probenehmer:
+            st.session_state.probenehmer = probenehmer_input
+            st.query_params['probenehmer'] = probenehmer_input
+            st.rerun()
+
+    wetter_input = st.text_input("Witterung / Lufttemperatur (manuelle Eingabe):", value=st.session_state.wetter_manuell, placeholder="z. B. 18°C, sonnig / trocken")
+    if wetter_input != st.session_state.wetter_manuell:
+        st.session_state.wetter_manuell = wetter_input
+        st.query_params['wetter_manuell'] = wetter_input
+        st.rerun()
 
     st.write("---")
 
@@ -399,21 +335,23 @@ with tab4:
                 
                 st.dataframe(tabellen_daten)
                 
-                # --- STRUKTURIERTER TEXT-EXPORT (FIXED WIDTH) ---
                 bezeichnung = st.session_state.messstelle if st.session_state.messstelle else "Nicht angegeben"
                 auftrag = st.session_state.auftragsnummer if st.session_state.auftragsnummer else "Nicht angegeben"
+                wetter_wert = st.session_state.wetter_manuell if st.session_state.wetter_manuell else "Keine Angabe"
+                probenehmer_wert = st.session_state.probenehmer if st.session_state.probenehmer else "Nicht angegeben"
                 
                 protokoll_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
                 protokoll_text += "="*102 + "\n"
                 protokoll_text += f"Auftragsnummer:        {auftrag}\n"
+                protokoll_text += f"Probenehmer:           {probenehmer_wert}\n"
+                protokoll_text += f"Verwendete Pumpe:      {st.session_state.pumpe_typ}\n"
                 protokoll_text += f"Einbautiefe Pumpe:     {st.session_state.pumpe_tiefe:.2f} m\n"
                 protokoll_text += f"Ruhewasserstand:       {st.session_state.din_rws:.2f} m\n"
                 protokoll_text += f"Gesamttiefe:           {st.session_state.din_tiefe:.2f} m\n"
                 protokoll_text += f"Zu pumpendes Volumen:  {vol:.1f} L\n"
                 protokoll_text += f"Förderstrom:           {flow:.2f} l/min\n"
                 protokoll_text += f"Berechnete Förderzeit: {total_minutes:.1f} Min.\n"
-                protokoll_text += f"Lufttemperatur:        {st.session_state.wetter_temp}\n"  # ERWEITERUNG IN TEXT
-                protokoll_text += f"Witterung (Internet):  {st.session_state.wetter_text}\n"  # ERWEITERUNG IN TEXT
+                protokoll_text += f"Witterung/Lufttemp.:   {wetter_wert}\n"
                 protokoll_text += "-"*102 + "\n\n"
                 
                 spalten_layout = "{:<12} {:<10} {:<12} {:<14} {:<12} {:<8} {:<13} {:<12} {:<10} {:<15}\n"
@@ -445,14 +383,15 @@ with tab4:
                 
                 csv_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
                 csv_text += f"Auftragsnummer;{auftrag};-\n"
+                csv_text += f"Probenehmer;{probenehmer_wert};-\n"
+                csv_text += f"Verwendete Pumpe;{st.session_state.pumpe_typ};-\n"
                 csv_text += f"Einbautiefe Pumpe;{st.session_state.pumpe_tiefe:.2f};m\n"
                 csv_text += f"Ruhewasserstand;{st.session_state.din_rws:.2f};m\n"
                 csv_text += f"Gesamttiefe;{st.session_state.din_tiefe:.2f};m\n"
                 csv_text += f"Zu pumpendes Volumen;{vol:.1f};L\n"
                 csv_text += f"Förderstrom;{flow:.2f};l/min\n"
                 csv_text += f"Berechnete Förderzeit;{total_minutes:.1f};Min.\n"
-                csv_text += f"Lufttemperatur;{st.session_state.wetter_temp};-\n"  # ERWEITERUNG IN CSV
-                csv_text += f"Witterung;{st.session_state.wetter_text};-\n"      # ERWEITERUNG IN CSV
+                csv_text += f"Witterung/Lufttemp.;{wetter_wert};-\n"
                 csv_text += "\n"
                 
                 csv_text += "Datum;Uhrzeit;Zeit (Min);Wasserstand (m);Temp (°C);pH;LF (µS/cm);Redox (mV);O2 (mg/l);Status\n"
@@ -483,9 +422,9 @@ with tab4:
                 st.session_state.messstelle = ""
                 st.session_state.auftragsnummer = ""
                 st.session_state.pumpe_tiefe = 20.0
-                st.session_state.wetter_ort = ""   # RESET WETTER
-                st.session_state.wetter_temp = "-" # RESET WETTER
-                st.session_state.wetter_text = "-" # RESET WETTER
+                st.session_state.pumpe_typ = "MP1 mit Schlauch"
+                st.session_state.probenehmer = ""
+                st.session_state.wetter_manuell = ""
                 st.session_state.din_tiefe = 22.5
                 st.session_state.din_rws = 14.2
                 st.query_params.clear()
@@ -496,8 +435,5 @@ with tab4:
                 st.success("🎉 Das berechnete Zielvolumen wurde vollständig abgepumpt!")
                 
     else:
-        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen (Reiter 1 oder 2) und übernehmen Sie den Förderstrom (Reiter 3).")
-
-                    
-                            
-                                    
+        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen (Reiter 1: DIN oder Filterkies) und übernehmen Sie den Förderstrom (Reiter 2).")
+                                         
