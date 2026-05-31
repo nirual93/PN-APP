@@ -412,4 +412,66 @@ with tab3:
                         "O2 (mg/l)": f"{prozent_diff(m_letzte['O2 (mg/l)'], m_vorletzte['O2 (mg/l)']):+.1f}%",
                         "Status": ""
                     }
-                    tabellen_daten = tabell
+                    tabellen_daten = tabellen_daten + [abweichung_zeile]
+                
+                st.dataframe(tabellen_daten)
+                
+                bezeichnung = st.session_state.messstelle if st.session_state.messstelle else "Nicht_angegeben"
+                auftrag = st.session_state.auftragsnummer if st.session_state.auftragsnummer else "Nicht_angegeben"
+                wetter_wert = st.session_state.wetter_manuell if st.session_state.wetter_manuell else "Keine Angabe"
+                probenehmer_wert = st.session_state.probenehmer if st.session_state.probenehmer else "Nicht angegeben"
+                faerbung_wert = st.session_state.faerbung if st.session_state.faerbung else "Keine Angabe"
+                truebung_wert = st.session_state.truebung if st.session_state.truebung else "Keine Angabe"
+                geruch_wert = st.session_state.geruch if st.session_state.geruch else "Keine Angabe"
+                bodensatz_wert = st.session_state.bodensatz if st.session_state.bodensatz else "Keine Angabe"
+                bemerkungen_wert = st.session_state.bemerkungen if st.session_state.bemerkungen else "Keine"
+                csv_safe_bemerkungen = bemerkungen_wert.replace("\n", " // ")
+
+                # --- NEU: BUTTON UM DIESE MESSSTELLE ZUR KAMPAGNE HINZUZUFÜGEN ---
+                st.write("---")
+                st.markdown("### 📦 Kampagnen-Sicherung")
+                if st.button("➕ DIESE Messstelle zur Labor-Kampagne hinzufügen", type="secondary"):
+                    # Für jede zeitliche Messung dieser Messstelle eine flache Zeile erzeugen
+                    for m in st.session_state.messungen:
+                        sammel_zeile = {
+                            "Auftragsnummer": auftrag, "Messstelle": bezeichnung, "Probenehmer": probenehmer_wert,
+                            "Witterung": wetter_wert, "Faerbung": faerbung_wert, "Truebung": truebung_wert,
+                            "Geruch": geruch_wert, "Bodensatz": bodensatz_wert, "Bemerkungen": csv_safe_bemerkungen,
+                            "Datum": m["Datum"], "Uhrzeit": m["Uhrzeit"], "Zeit_Min": m["Zeit (Min)"],
+                            "Wasserstand_m": m["Wasserstand (m)"], "Temp_C": m["Temp (°C)"], "pH": m["pH"],
+                            "LF_uS_cm": m["LF (µS/cm)"], "Redox_mV": m["Redox (mV)"], "O2_mg_l": m["O2 (mg/l)"],
+                            "Status": m["Status"]
+                        }
+                        st.session_state.kampagne_daten.append(sammel_zeile)
+                    st.success(f"✅ Alle Daten für die Messstelle {bezeichnung} wurden links in der Sammel-Kampagne gespeichert!")
+                    st.rerun()
+
+                # Einzel-Anzeige Text-Protokoll
+                protokoll_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
+                protokoll_text += f"Auftragsnummer: {auftrag} | Probenehmer: {probenehmer_wert}\n"
+                protokoll_text += f"Witterung: {wetter_wert} | Färbung: {faerbung_wert} | Trübung: {truebung_wert} | Geruch: {geruch_wert} | Bodensatz: {bodensatz_wert}\n"
+                protokoll_text += f"Bemerkungen: {bemerkungen_wert}\n"
+                protokoll_text += "-"*102 + "\n"
+                st.code(protokoll_text, language="markdown")
+                
+            # --- RESET-BUTTON (FÜR NÄCHSTE MESSSTELLE) ---
+            st.write("---")
+            if st.button("🗑️ Einzelne Messstelle zurücksetzen (Nächste Messstelle anfahren)", type="secondary"):
+                st.session_state.ziel_volumen = 0.0
+                st.session_state.pumpen_leistung = 0.0
+                st.session_state.pumpen_start = None
+                st.session_state.messungen = []
+                st.session_state.messstelle = ""
+                st.session_state.faerbung = ""
+                st.session_state.truebung = ""
+                st.session_state.geruch = ""
+                st.session_state.bodensatz = ""
+                st.session_state.bemerkungen = ""
+                st.query_params.clear()
+                st.rerun()
+                
+            if 'remaining_total' in locals() and remaining_total == 0:
+                st.balloons()
+                st.success("🎉 Das berechnete Zielvolumen wurde vollständig abgepumpt!")
+    else:
+        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen
