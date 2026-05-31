@@ -7,8 +7,11 @@ import json
 st.set_page_config(page_title="Feld-Assistent GW", page_icon="🛠️", layout="centered")
 
 # =========================================================================
-# CRASH-SCHUTZ: DATEN AUTOMATISCH AUS DER URL WIEDERHERSTELLEN
+# CRASH-SCHUTZ & KAMPAGNEN-SPEICHER INITIALISIEREN
 # =========================================================================
+if 'kampagne_daten' not in st.session_state:
+    st.session_state.kampagne_daten = []
+
 if 'ziel_volumen' not in st.session_state:
     val = st.query_params.get('ziel_volumen', '0.0')
     st.session_state.ziel_volumen = float(val) if val else 0.0
@@ -47,7 +50,6 @@ if 'probenehmer' not in st.session_state:
 if 'wetter_manuell' not in st.session_state:
     st.session_state.wetter_manuell = st.query_params.get('wetter_manuell', '')
 
-# Organoleptik (Crash-Schutz)
 if 'faerbung' not in st.session_state:
     st.session_state.faerbung = st.query_params.get('faerbung', '')
 
@@ -72,7 +74,48 @@ if 'din_rws' not in st.session_state:
     st.session_state.din_rws = float(val) if val else 14.2
 
 # =========================================================================
+# SEITENLEISTE: KAMPAGNEN-VERWALTUNG (ZUSAMMENFASSUNG FÜR DAS LABOR)
+# =========================================================================
+with st.sidebar:
+    st.header("📋 Labor-Kampagne")
+    st.write("Hier werden alle Messstellen des aktuellen Auftrags gesammelt.")
+    
+    # Einzigartige bereits gesicherte Messstellen anzeigen
+    if st.session_state.kampagne_daten:
+        gespeicherte_gws = list(set([d["Messstelle"] for d in st.session_state.kampagne_daten]))
+        st.success(f"Gesichert: {len(gespeicherte_gws)} Messstelle(n)")
+        for gw in gespeicherte_gws:
+            st.write(f"🔹 {gw}")
+        
+        st.write("---")
+        # Generierung der Labor-Sammel-CSV (Flaches, datenbanktaugliches Format)
+        labor_csv = "Auftragsnummer;Messstelle;Probenehmer;Witterung;Faerbung;Truebung;Geruch;Bodensatz;Bemerkungen;Datum;Uhrzeit;Zeit_Min;Wasserstand_m;Temp_C;pH;LF_uS_cm;Redox_mV;O2_mg_l;Status\n"
+        for zeile in st.session_state.kampagne_daten:
+            labor_csv += (
+                f"{zeile['Auftragsnummer']};{zeile['Messstelle']};{zeile['Probenehmer']};{zeile['Witterung']};"
+                f"{zeile['Faerbung']};{zeile['Truebung']};{zeile['Geruch']};{zeile['Bodensatz']};{zeile['Bemerkungen']};"
+                f"{zeile['Datum']};{zeile['Uhrzeit']};{zeile['Zeit_Min']};{zeile['Wasserstand_m']:.2f};"
+                f"{zeile['Temp_C']:.1f};{zeile['pH']:.2f};{zeile['LF_uS_cm']:.0f};{zeile['Redox_mV']:.0f};"
+                f"{zeile['O2_mg_l']:.1f};{zeile['Status']}\n"
+            )
+        
+        st.download_button(
+            label="💾 SAMMEL-CSV FÜR LABOR",
+            data=labor_csv,
+            file_name=f"Labor_Export_Kampagne_{st.session_state.auftragsnummer if st.session_state.auftragsnummer else 'GW'}.csv",
+            mime="text/csv",
+            type="primary"
+        )
+        
+        if st.button("🗑️ Kampagnenspeicher leeren"):
+            st.session_state.kampagne_daten = []
+            st.rerun()
+    else:
+        st.info("Noch keine Messstellen zur Kampagne hinzugefügt. Nutzen Sie dazu den Button unten im Protokoll-Reiter.")
 
+# =========================================================================
+# HAUPTSEITE
+# =========================================================================
 st.title("🛠️ Grundwasser Feld-Assistent")
 st.write("Wählen Sie das benötigte Werkzeug über die Reiter aus:")
 
@@ -114,7 +157,7 @@ with tab1:
             col3.metric("3-fach Abpumpen", f"{abpump_volumen:.1f} L")
 
     st.write("---")
-    with st.expander("🪨 Alternativ: Filterkiesschüttung berechnen (Selten benötigt)"):
+    with st.expander("🪨 Alternativ: Filterkiesschüttung berechnen"):
         st.write("Berechnung des Volumens der Filterkiesschüttung für Sonderfälle:")
         durchmesser_m = st.number_input("Bohrlochdurchmesser in Metern", min_value=0.0, value=0.15, step=0.01, key="kies_dn")
         maechtigkeit_m = st.number_input("Mächtigkeit der Schüttung in Metern", min_value=0.0, value=5.0, step=0.1, key="kies_h")
@@ -229,7 +272,6 @@ with tab3:
     st.write("---")
     st.markdown("#### 👁️ Organoleptische Befundung")
     
-    # NEU: 4 Felder für Färbung, Trübung, Geruch, Bodensatz oberhalb der Bemerkungen
     col_o1, col_o2 = st.columns(2)
     with col_o1:
         faerbung_input = st.text_input("Färbung:", value=st.session_state.faerbung, placeholder="z. B. farblos, schwach gelblich")
@@ -257,7 +299,6 @@ with tab3:
             st.query_params['bodensatz'] = bodensatz_input
             st.rerun()
 
-    # Mehrzeiliges Textfeld für Bemerkungen des Probenehmers
     bemerkungen_input = st.text_area("Bemerkungen des Probenehmers:", value=st.session_state.bemerkungen, placeholder="z. B. Starke Initialtrübung, technische Auffälligkeiten o.ä.")
     if bemerkungen_input != st.session_state.bemerkungen:
         st.session_state.bemerkungen = bemerkungen_input
@@ -306,7 +347,6 @@ with tab3:
                 st.rerun()
             
             st.write("---")
-            
             st.markdown("### 📝 Parameter erfassen")
             
             col_p1, col_p2, col_p3 = st.columns(3)
@@ -316,10 +356,8 @@ with tab3:
                 
                 wasser_ueber_pumpe = st.session_state.pumpe_tiefe - water_level
                 if wasser_ueber_pumpe < 1.0:
-                    st.error(f"🚨 TROCKENLAUFSCHUTZ:\nWasserstand zu niedrig! Pumpe hängt nur noch {wasser_ueber_pumpe:.2f} m im Wasser (Minimum: 1.00 m)!")
-                elif wasser_ueber_pumpe < 0:
-                    st.error("🚨 CRITICAL: Die Pumpe hängt bereits im Trockenen!")
-                    
+                    st.error(f"🚨 TROCKENLAUFSCHUTZ:\nWasserstand zu niedrig! Pumpe hängt nur noch {wasser_ueber_pumpe:.2f} m im Wasser!")
+                
             with col_p2:
                 ph = st.number_input("pH-Wert", value=7.00, step=0.01)
                 lf = st.number_input("LF (µS/cm)", value=500.0, step=1.0)
@@ -332,9 +370,7 @@ with tab3:
                 datum_jetzt = time.strftime("%d.%m.%Y")
                 zeitstempel = f"{elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
                 
-                warnung_text = ""
-                if (st.session_state.pumpe_tiefe - water_level) < 1.0:
-                    warnung_text = "⚠️ < 1m Wasser!"
+                warnung_text = "⚠️ < 1m Wasser!" if (st.session_state.pumpe_tiefe - water_level) < 1.0 else ""
                 
                 neue_messung = {
                     "Datum": datum_jetzt,
@@ -350,7 +386,6 @@ with tab3:
                 }
                 st.session_state.messungen.append(neue_messung)
                 st.query_params['messungen'] = json.dumps(st.session_state.messungen)
-                
                 st.success(f"Messung um {uhrzeit_jetzt} erfolgreich gespeichert!")
                 st.rerun()
                 
@@ -364,10 +399,8 @@ with tab3:
                 if len(st.session_state.messungen) >= 2:
                     m_letzte = st.session_state.messungen[-1]
                     m_vorletzte = st.session_state.messungen[-2]
-                    
                     def prozent_diff(neu, alt):
-                        if alt == 0: return 0.0
-                        return ((neu - alt) / alt) * 100
+                        return ((neu - alt) / alt) * 100 if alt != 0 else 0.0
                     
                     abweichung_zeile = {
                         "Datum": "-", "Uhrzeit": "Δ Vorwert", "Zeit (Min)": "-",
@@ -379,131 +412,4 @@ with tab3:
                         "O2 (mg/l)": f"{prozent_diff(m_letzte['O2 (mg/l)'], m_vorletzte['O2 (mg/l)']):+.1f}%",
                         "Status": ""
                     }
-                    tabellen_daten = tabellen_daten + [abweichung_zeile]
-                
-                st.dataframe(tabellen_daten)
-                
-                bezeichnung = st.session_state.messstelle if st.session_state.messstelle else "Nicht angegeben"
-                auftrag = st.session_state.auftragsnummer if st.session_state.auftragsnummer else "Nicht angegeben"
-                wetter_wert = st.session_state.wetter_manuell if st.session_state.wetter_manuell else "Keine Angabe"
-                probenehmer_wert = st.session_state.probenehmer if st.session_state.probenehmer else "Nicht angegeben"
-                
-                faerbung_wert = st.session_state.faerbung if st.session_state.faerbung else "Keine Angabe"
-                truebung_wert = st.session_state.truebung if st.session_state.truebung else "Keine Angabe"
-                geruch_wert = st.session_state.geruch if st.session_state.geruch else "Keine Angabe"
-                bodensatz_wert = st.session_state.bodensatz if st.session_state.bodensatz else "Keine Angabe"
-                bemerkungen_wert = st.session_state.bemerkungen if st.session_state.bemerkungen else "Keine"
-                
-                # Formatierung Text-Protokoll (Inklusive Organoleptik)
-                protokoll_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
-                protokoll_text += "="*102 + "\n"
-                protokoll_text += f"Auftragsnummer:        {auftrag}\n"
-                protokoll_text += f"Probenehmer:           {probenehmer_wert}\n"
-                protokoll_text += f"Verwendete Pumpe:      {st.session_state.pumpe_typ}\n"
-                protokoll_text += f"Einbautiefe Pumpe:     {st.session_state.pumpe_tiefe:.2f} m\n"
-                protokoll_text += f"Ruhewasserstand:       {st.session_state.din_rws:.2f} m\n"
-                protokoll_text += f"Gesamttiefe:           {st.session_state.din_tiefe:.2f} m\n"
-                protokoll_text += f"Zu pumpendes Volumen:  {vol:.1f} L\n"
-                protokoll_text += f"Förderstrom:           {flow:.2f} l/min\n"
-                protokoll_text += f"Berechnete Förderzeit: {total_minutes:.1f} Min.\n"
-                protokoll_text += f"Witterung/Lufttemp.:   {wetter_wert}\n"
-                protokoll_text += f"Färbung:               {faerbung_wert}\n"
-                protokoll_text += f"Trübung:               {truebung_wert}\n"
-                protokoll_text += f"Geruch:                {geruch_wert}\n"
-                protokoll_text += f"Bodensatz:             {bodensatz_wert}\n"
-                protokoll_text += f"Bemerkungen:           {bemerkungen_wert}\n"
-                protokoll_text += "-"*102 + "\n\n"
-                
-                spalten_layout = "{:<12} {:<10} {:<12} {:<14} {:<12} {:<8} {:<13} {:<12} {:<10} {:<15}\n"
-                protokoll_text += spalten_layout.format("Datum", "Uhrzeit", "Zeit (Min)", "W-Stand (m)", "Temp (°C)", "pH", "LF (µS/cm)", "Redox (mV)", "O2 (mg/l)", "Status/Warnung")
-                protokoll_text += "-"*102 + "\n"
-                
-                for m in st.session_state.messungen:
-                    protokoll_text += spalten_layout.format(
-                        m['Datum'], m['Uhrzeit'], m['Zeit (Min)'], f"{m['Wasserstand (m)']:.2f}",
-                        f"{m['Temp (°C)']:.1f}", f"{m['pH']:.2f}", f"{m['LF (µS/cm)']:.0f}",
-                        f"{m['Redox (mV)']:.0f}", f"{m['O2 (mg/l)']:.1f}", m['Status']
-                    )
-                
-                if len(st.session_state.messungen) >= 2:
-                    protokoll_text += "-"*102 + "\n"
-                    protokoll_text += spalten_layout.format(
-                        "-", "Δ Vorwert", "-", abweichung_zeile['Wasserstand (m)'],
-                        abweichung_zeile['Temp (°C)'], abweichung_zeile['pH'],
-                        abweichung_zeile['LF (µS/cm)'], abweichung_zeile['Redox (mV)'],
-                        abweichung_zeile['O2 (mg/l)'], ""
-                    )
-                
-                st.write("---")
-                st.code(protokoll_text, language="markdown")
-                
-                # Formatierung CSV-Text (Inklusive Organoleptik)
-                csv_safe_bemerkungen = bemerkungen_wert.replace("\n", " // ")
-                
-                csv_text = f"=== MESSSTELLEN-PROTOKOLL: {bezeichnung} ===\n"
-                csv_text += f"Auftragsnummer;{auftrag};-\n"
-                csv_text += f"Probenehmer;{probenehmer_wert};-\n"
-                csv_text += f"Verwendete Pumpe;{st.session_state.pumpe_typ};-\n"
-                csv_text += f"Einbautiefe Pumpe;{st.session_state.pumpe_tiefe:.2f};m\n"
-                csv_text += f"Ruhewasserstand;{st.session_state.din_rws:.2f};m\n"
-                csv_text += f"Gesamttiefe;{st.session_state.din_tiefe:.2f};m\n"
-                csv_text += f"Zu pumpendes Volumen;{vol:.1f};L\n"
-                csv_text += f"Förderstrom;{flow:.2f};l/min\n"
-                csv_text += f"Berechnete Förderzeit;{total_minutes:.1f};Min.\n"
-                csv_text += f"Witterung/Lufttemp.;{wetter_wert};-\n"
-                csv_text += f"Färbung;{faerbung_wert};-\n"
-                csv_text += f"Trübung;{truebung_wert};-\n"
-                csv_text += f"Geruch;{geruch_wert};-\n"
-                csv_text += f"Bodensatz;{bodensatz_wert};-\n"
-                csv_text += f"Bemerkungen;{csv_safe_bemerkungen};-\n"
-                csv_text += "\n"
-                
-                csv_text += "Datum;Uhrzeit;Zeit (Min);Wasserstand (m);Temp (°C);pH;LF (µS/cm);Redox (mV);O2 (mg/l);Status\n"
-                
-                for m in st.session_state.messungen:
-                    csv_text += f"{m['Datum']};{m['Uhrzeit']};{m['Zeit (Min)']};{m['Wasserstand (m)']:.2f};{m['Temp (°C)']:.1f};{m['pH']:.2f};{m['LF (µS/cm)']:.0f};{m['Redox (mV)']:.0f};{m['O2 (mg/l)']:.1f};{m['Status']}\n"
-                
-                if len(st.session_state.messungen) >= 2:
-                    csv_text += f"-;{abweichung_zeile['Uhrzeit']};-;{abweichung_zeile['Wasserstand (m)']};{abweichung_zeile['Temp (°C)']};{abweichung_zeile['pH']};{abweichung_zeile['LF (µS/cm)']};{abweichung_zeile['Redox (mV)']};{abweichung_zeile['O2 (mg/l)']};-\n"
-                
-                dateiname = f"Protokoll_{bezeichnung.replace(' ', '_')}.csv" if bezeichnung != "Nicht angegeben" else "Protokoll_Grundwasser.csv"
-                
-                st.write("---")
-                st.markdown("### 📥 Daten exportieren")
-                st.download_button(
-                    label="📄 Tabelle als vollständige CSV-Datei herunterladen",
-                    data=csv_text,
-                    file_name=dateiname,
-                    mime="text/csv",
-                    type="primary"
-                )
-            
-            # --- RESET-BUTTON ---
-            st.write("---")
-            if st.button("🗑️ Alles zurücksetzen (Neues Bohrloch)", type="secondary"):
-                st.session_state.ziel_volumen = 0.0
-                st.session_state.pumpen_leistung = 0.0
-                st.session_state.pumpen_start = None
-                st.session_state.messungen = []
-                st.session_state.messstelle = ""
-                st.session_state.auftragsnummer = ""
-                st.session_state.pumpe_tiefe = 20.0
-                st.session_state.pumpe_typ = "MP1 mit Schlauch"
-                st.session_state.probenehmer = ""
-                st.session_state.wetter_manuell = ""
-                st.session_state.faerbung = ""
-                st.session_state.truebung = ""
-                st.session_state.geruch = ""
-                st.session_state.bodensatz = ""
-                st.session_state.bemerkungen = ""
-                st.session_state.din_tiefe = 22.5
-                st.session_state.din_rws = 14.2
-                st.query_params.clear()
-                st.rerun()
-                
-            if remaining_total == 0:
-                st.balloons()
-                st.success("🎉 Das berechnete Zielvolumen wurde vollständig abgepumpt!")
-                
-    else:
-        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen (Reiter 1: DIN oder Filterkies) und übernehmen Sie den Förderstrom (Reiter 2).")
+                    tabellen_daten = tabell
