@@ -88,11 +88,12 @@ with st.sidebar:
             st.write(f"🔹 {gw}")
         
         st.write("---")
-        # Generierung der Labor-Sammel-CSV (Flaches, datenbanktaugliches Format)
-        labor_csv = "Auftragsnummer;Messstelle;Probenehmer;Witterung;Faerbung;Truebung;Geruch;Bodensatz;Bemerkungen;Datum;Uhrzeit;Zeit_Min;Wasserstand_m;Temp_C;pH;LF_uS_cm;Redox_mV;O2_mg_l;Status\n"
+        # Generierung der Labor-Sammel-CSV (KORRIGIERT: Jetzt inklusive Pumpe, Tiefe & Förderstrom)
+        labor_csv = "Auftragsnummer;Messstelle;Probenehmer;Witterung;Pumpe_Typ;Pumpe_Tiefe_m;Foerderstrom_l_min;Faerbung;Truebung;Geruch;Bodensatz;Bemerkungen;Datum;Uhrzeit;Zeit_Min;Wasserstand_m;Temp_C;pH;LF_uS_cm;Redox_mV;O2_mg_l;Status\n"
         for zeile in st.session_state.kampagne_daten:
             labor_csv += (
                 f"{zeile['Auftragsnummer']};{zeile['Messstelle']};{zeile['Probenehmer']};{zeile['Witterung']};"
+                f"{zeile['Pumpe_Typ']};{zeile['Pumpe_Tiefe_m']:.2f};{zeile['Foerderstrom_l_min']:.2f};"
                 f"{zeile['Faerbung']};{zeile['Truebung']};{zeile['Geruch']};{zeile['Bodensatz']};{zeile['Bemerkungen']};"
                 f"{zeile['Datum']};{zeile['Uhrzeit']};{zeile['Zeit_Min']};{zeile['Wasserstand_m']:.2f};"
                 f"{zeile['Temp_C']:.1f};{zeile['pH']:.2f};{zeile['LF_uS_cm']:.0f};{zeile['Redox_mV']:.0f};"
@@ -433,9 +434,14 @@ with tab3:
                 if st.button("➕ DIESE Messstelle zur Labor-Kampagne hinzufügen", type="secondary"):
                     # Für jede zeitliche Messung dieser Messstelle eine flache Zeile erzeugen
                     for m in st.session_state.messungen:
+                        # KORRIGIERT: Hier werden jetzt Pumpe_Typ, Pumpe_Tiefe_m und Foerderstrom_l_min explizit mitgesichert
                         sammel_zeile = {
                             "Auftragsnummer": auftrag, "Messstelle": bezeichnung, "Probenehmer": probenehmer_wert,
-                            "Witterung": wetter_wert, "Faerbung": faerbung_wert, "Truebung": truebung_wert,
+                            "Witterung": wetter_wert, 
+                            "Pumpe_Typ": st.session_state.pumpe_typ,
+                            "Pumpe_Tiefe_m": st.session_state.pumpe_tiefe,
+                            "Foerderstrom_l_min": st.session_state.pumpen_leistung,
+                            "Faerbung": faerbung_wert, "Truebung": truebung_wert,
                             "Geruch": geruch_wert, "Bodensatz": bodensatz_wert, "Bemerkungen": csv_safe_bemerkungen,
                             "Datum": m["Datum"], "Uhrzeit": m["Uhrzeit"], "Zeit_Min": m["Zeit (Min)"],
                             "Wasserstand_m": m["Wasserstand (m)"], "Temp_C": m["Temp (°C)"], "pH": m["pH"],
