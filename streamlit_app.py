@@ -474,4 +474,4 @@ with tab3:
                 st.balloons()
                 st.success("🎉 Das berechnete Zielvolumen wurde vollständig abgepumpt!")
     else:
-        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen
+        st.warning("⚠️ Bitte berechnen Sie zuerst das Abpumpvolumen (Reiter 1) und übernehmen Sie den Förderstrom (Reiter 2).")
